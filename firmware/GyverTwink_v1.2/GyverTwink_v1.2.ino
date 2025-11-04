@@ -62,6 +62,8 @@ struct Cfg {
   byte prdCh = 1;
   bool turnOff = 0;
   byte offTmr = 60;
+  bool parisMoments = false;
+  bool snowflakes = false;
 };
 Cfg cfg;
 EEManager EEcfg(cfg);
@@ -81,21 +83,91 @@ MM mm;
 EEManager EEmm(mm);
 
 #define ACTIVE_PALETTES 11
+#define TOTAL_EFFECTS (ACTIVE_PALETTES * 2 + 1)
 struct Effects {
   bool fav = true;
   byte scale = 50;
   byte speed = 150;
 };
-Effects effs[ACTIVE_PALETTES * 2];
+Effects effs[TOTAL_EFFECTS];
 EEManager EEeff(effs);
+
+const byte PARIS_EFFECT_INDEX = TOTAL_EFFECTS - 1;
 
 // ================== MISC DATA ==================
 Timer forceTmr(30000, false);
 Timer switchTmr(0, false);
 Timer offTmr(60000, false);
+Timer parisEventTimer(0, false);
+Timer parisDurationTimer(0, false);
 bool calibF = false;
 byte curEff = 0;
 byte forceEff = 0;
+bool parisOverlayActive = false;
+
+void resetSnowflakes();
+void applySnowflakeState(bool state);
+
+void scheduleParisEvent() {
+  uint32_t delayMs = random(3, 11) * 60000ul;
+  parisEventTimer.setPrd(delayMs);
+  parisEventTimer.restart();
+}
+
+void startParisOverlay() {
+  parisOverlayActive = true;
+  uint32_t duration = random(15000, 30001);
+  parisDurationTimer.setPrd(duration);
+  parisDurationTimer.restart();
+}
+
+void stopParisOverlay() {
+  parisOverlayActive = false;
+  parisDurationTimer.stop();
+}
+
+void applyParisMomentState(bool state) {
+  if (state && cfg.snowflakes) {
+    applySnowflakeState(false);
+  }
+  cfg.parisMoments = state;
+  if (cfg.parisMoments) {
+    if (!parisOverlayActive) scheduleParisEvent();
+  } else {
+    stopParisOverlay();
+    parisEventTimer.stop();
+  }
+}
+
+void applySnowflakeState(bool state) {
+  if (state && cfg.parisMoments) {
+    applyParisMomentState(false);
+  }
+  cfg.snowflakes = state;
+  if (!cfg.snowflakes) resetSnowflakes();
+}
+
+void handleParisMoments() {
+  if (!cfg.parisMoments || calibF || !cfg.power) {
+    if (parisOverlayActive) stopParisOverlay();
+    parisEventTimer.stop();
+    return;
+  }
+
+  if (!parisOverlayActive && !parisEventTimer.state()) {
+    scheduleParisEvent();
+  }
+
+  if (!parisOverlayActive && parisEventTimer.state() && parisEventTimer.ready()) {
+    parisEventTimer.stop();
+    startParisOverlay();
+  }
+
+  if (parisOverlayActive && parisDurationTimer.ready()) {
+    stopParisOverlay();
+    scheduleParisEvent();
+  }
+}
 
 #ifdef DEBUG_SERIAL_GT
 #define DEBUGLN(x) Serial.println(x)
@@ -132,6 +204,8 @@ void setup() {
   switchTmr.setPrd(cfg.prdCh * 60000ul);
   if (cfg.autoCh) switchTmr.restart();
   switchEff();
+  applyParisMomentState(cfg.parisMoments);
+  applySnowflakeState(cfg.snowflakes);
   cfg.turnOff = false;
   strip->setLeds(leds, cfg.ledAm);
   udp.begin(8888);
@@ -154,7 +228,7 @@ void loop() {
   }
 
   // форс выключен и настало время менять эффект
-  if (!forceTmr.state() && switchTmr.ready()) switchEff();
+  if (!forceTmr.state() && !parisOverlayActive && switchTmr.ready()) switchEff();
 
   // таймер выключения
   if (offTmr.ready()) {
@@ -167,5 +241,7 @@ void loop() {
   }
 
   // показываем эффект, если включены
+  handleParisMoments();
+
   if (!calibF && cfg.power) effects();
 }
