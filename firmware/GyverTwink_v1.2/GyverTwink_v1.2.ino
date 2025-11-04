@@ -31,6 +31,9 @@
 // имя точки в режиме AP
 #define GT_AP_SSID "GyverTwink"
 #define GT_AP_PASS "12345678"
+// имя и пароль Wi-Fi сети для режима клиента (оставь пустыми, если не нужно)
+#define GT_STA_SSID ""
+#define GT_STA_PASS ""
 //#define DEBUG_SERIAL_GT   // раскомментируй, чтобы включить отладку
 
 // ================== LIBS ==================
@@ -40,6 +43,7 @@
 #include <FastLED.h>
 #include <EEManager.h>
 #include <EncButton.h>
+#include <string.h>
 #include "palettes.h"
 #include "Timer.h"
 
@@ -107,6 +111,22 @@ bool parisOverlayActive = false;
 
 void resetSnowflakes();
 void applySnowflakeState(bool state);
+
+bool hasDefaultStaCredentials() {
+  return GT_STA_SSID[0] != '\0';
+}
+
+void applyDefaultWifiConfig() {
+  if (!hasDefaultStaCredentials()) return;
+
+  strncpy(portalCfg.SSID, GT_STA_SSID, sizeof(portalCfg.SSID) - 1);
+  portalCfg.SSID[sizeof(portalCfg.SSID) - 1] = '\0';
+
+  strncpy(portalCfg.pass, GT_STA_PASS, sizeof(portalCfg.pass) - 1);
+  portalCfg.pass[sizeof(portalCfg.pass) - 1] = '\0';
+
+  portalCfg.mode = WIFI_STA;
+}
 
 void scheduleParisEvent() {
   uint32_t delayMs = random(3, 11) * 60000ul;
@@ -188,8 +208,15 @@ void setup() {
   startStrip();
   EEPROM.begin(2048); // с запасом!
 
-  // если это первый запуск или щелчок по кнопке, открываем портал
-  if (EEwifi.begin(0, 'a') || checkButton()) portalRoutine();
+  applyDefaultWifiConfig();
+  bool firstLaunch = EEwifi.begin(0, 'a');
+  bool buttonPressed = false;
+  if (!firstLaunch || hasDefaultStaCredentials()) {
+    buttonPressed = checkButton();
+  }
+
+  // если нет дефолтных данных или была нажата кнопка, открываем портал
+  if ((firstLaunch && !hasDefaultStaCredentials()) || buttonPressed) portalRoutine();
 
   // создаём точку или подключаемся к AP
   if (portalCfg.mode == WIFI_AP || (portalCfg.mode == WIFI_STA && portalCfg.SSID[0] == '\0')) setupAP();
