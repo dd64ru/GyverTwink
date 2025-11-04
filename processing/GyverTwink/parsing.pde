@@ -1,7 +1,7 @@
 void receive(byte[] ubuf) {
   if (ubuf[0] != 'G' || ubuf[1] != 'T') return;
-  int[] data = new int[10];
-  for (int i = 0; i < ubuf.length - 2; i++) {
+  int[] data = new int[ubuf.length - 2];
+  for (int i = 0; i < data.length; i++) {
     data[i] = int(ubuf[i+2]);
     //println(data[i]);
   }
@@ -14,7 +14,7 @@ void receive(byte[] ubuf) {
     if (!ips.hasValue(ip)) ips.append(ip);
     break;
 
-  case 1: // Настройки 
+  case 1: // Настройки
     searchF = false;
     leds.text = str(data[1] * 100 + data[2]);
     power.value = boolean(data[3]);
@@ -24,6 +24,8 @@ void receive(byte[] ubuf) {
     prd.value = data[7];
     offT.value = boolean(data[8]);
     offS.value = data[9];
+    if (data.length > 10) parisMoments.value = boolean(data[10]);
+    if (data.length > 11) snowflakes.value = boolean(data[11]);
     break;
 
   case 4: // Эффект

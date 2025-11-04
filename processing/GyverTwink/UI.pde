@@ -7,6 +7,8 @@ Toggle power = new Toggle();
 Toggle offT = new Toggle();
 Toggle auto = new Toggle();
 Toggle rnd = new Toggle();
+Toggle parisMoments = new Toggle();
+Toggle snowflakes = new Toggle();
 Slider bri = new Slider();
 Slider prd = new Slider();
 Slider offS = new Slider();
@@ -76,6 +78,8 @@ void cfgTab() {
     Label("Auto:", 15);
     Label("Random:", 15);
     Label("Period [1-10m]:", 15);
+    Label("Paris lights moments:", 15);
+    Label("Snowflakes overlay:", 15);
   }
 
   uiResetStep(20);
@@ -102,6 +106,20 @@ void cfgTab() {
     if (auto.show(WW, uiStep())) sendData(new int[] {2, 3, int(auto.value)});
     if (rnd.show(WW, uiStep())) sendData(new int[] {2, 4, int(rnd.value)});
     if (prd.show(1, 10, WW, uiStep(), W)) sendData(new int[] {2, 5, int(prd.value)});
+    if (parisMoments.show(WW, uiStep())) {
+      sendData(new int[] {2, 9, int(parisMoments.value)});
+      if (parisMoments.value && snowflakes.value) {
+        snowflakes.value = false;
+        sendData(new int[] {2, 10, 0});
+      }
+    }
+    if (snowflakes.show(WW, uiStep())) {
+      sendData(new int[] {2, 10, int(snowflakes.value)});
+      if (snowflakes.value && parisMoments.value) {
+        parisMoments.value = false;
+        sendData(new int[] {2, 9, 0});
+      }
+    }
   }
 
   uiResetStep(20);

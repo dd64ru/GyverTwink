@@ -24,7 +24,7 @@ void parsing() {
       DEBUG(',');
       }
       DEBUGLN();*/
-    byte answ[10];
+    byte answ[12];
 
     switch (ubuf[2]) {
       case 0:   // запрос IP
@@ -45,7 +45,9 @@ void parsing() {
         answ[7] = cfg.prdCh;
         answ[8] = cfg.turnOff;
         answ[9] = cfg.offTmr;
-        reply(answ, 10);
+        answ[10] = cfg.parisMoments;
+        answ[11] = cfg.snowflakes;
+        reply(answ, 12);
         break;
 
       case 2:   // приём настроек
@@ -82,6 +84,12 @@ void parsing() {
             cfg.offTmr = ubuf[4];
             offTmr.setPrd(cfg.offTmr * 60000ul);
             if (cfg.turnOff) offTmr.restart();
+            break;
+          case 9:
+            applyParisMomentState(ubuf[4]);
+            break;
+          case 10:
+            applySnowflakeState(ubuf[4]);
             break;
         }
         if (!cfg.power) strip->showLeds(0);
