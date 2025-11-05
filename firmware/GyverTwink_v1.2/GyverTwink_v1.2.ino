@@ -28,13 +28,15 @@
 #define LED_ORDER GRB   // порядок цветов ленты
 #define LED_MAX 500     // макс. светодиодов
 
+#define USE_STATIC_IP 1
+
 // имя точки в режиме AP
 #define GT_AP_SSID "GyverTwink"
 #define GT_AP_PASS "12345678"
 // имя и пароль Wi-Fi сети для режима клиента (оставь пустыми, если не нужно)
 #define GT_STA_SSID ""
 #define GT_STA_PASS ""
-//#define DEBUG_SERIAL_GT   // раскомментируй, чтобы включить отладку
+#define DEBUG_SERIAL_GT   // раскомментируй, чтобы включить отладку
 
 // ================== LIBS ==================
 #include <ESP8266WiFi.h>
@@ -46,6 +48,11 @@
 #include <string.h>
 #include "palettes.h"
 #include "Timer.h"
+
+IPAddress STATIC_IP (192,168,178,88);
+IPAddress STATIC_GW (192,168,178,1);
+IPAddress STATIC_SN (255,255,255,0);
+IPAddress STATIC_DNS(192,168,178,1);  // можно 8,8,8,8
 
 // ================== OBJECTS ==================
 WiFiServer server(80);
@@ -147,9 +154,6 @@ void stopParisOverlay() {
 }
 
 void applyParisMomentState(bool state) {
-  if (state && cfg.snowflakes) {
-    applySnowflakeState(false);
-  }
   cfg.parisMoments = state;
   if (cfg.parisMoments) {
     if (!parisOverlayActive) scheduleParisEvent();
@@ -160,9 +164,6 @@ void applyParisMomentState(bool state) {
 }
 
 void applySnowflakeState(bool state) {
-  if (state && cfg.parisMoments) {
-    applyParisMomentState(false);
-  }
   cfg.snowflakes = state;
   if (!cfg.snowflakes) resetSnowflakes();
 }
@@ -203,26 +204,47 @@ void setup() {
   Serial.begin(115200);
   DEBUGLN();
 #endif
+
   delay(200);
   if (BTN_TOUCH) btn.setButtonLevel(HIGH);
   startStrip();
-  EEPROM.begin(2048); // с запасом!
 
-  applyDefaultWifiConfig();
+  // EEPROM сначала
+  EEPROM.begin(2048);
+
+  // 1) Загружаем portalCfg из EEPROM
   bool firstLaunch = EEwifi.begin(0, 'a');
+
+  // 2) Если в EEPROM пусто и есть зашитые дефолтные STA-учётки — применяем их и сохраняем
+  if ((portalCfg.SSID[0] == '\0') && hasDefaultStaCredentials()) {
+    applyDefaultWifiConfig();   // кладёт GT_STA_SSID/GT_STA_PASS в portalCfg и ставит WIFI_STA
+    EEwifi.updateNow();         // сразу сохраняем в EEPROM
+    DEBUGLN(F("Applied default STA creds to EEPROM"));
+  }
+
+  // 3) Кнопка для входа в портал (если не самый первый старт, либо дефолт есть)
   bool buttonPressed = false;
   if (!firstLaunch || hasDefaultStaCredentials()) {
     buttonPressed = checkButton();
   }
 
-  // если нет дефолтных данных или была нажата кнопка, открываем портал
-  if ((firstLaunch && !hasDefaultStaCredentials()) || buttonPressed) portalRoutine();
+  // 4) Портал настройки при первом старте без дефолтов или по кнопке
+  if ((firstLaunch && !hasDefaultStaCredentials()) || buttonPressed) {
+    portalRoutine();            // после выхода portalCfg уже обновлён
+    DEBUGLN(F("Portal finished"));
+  }
 
-  // создаём точку или подключаемся к AP
-  if (portalCfg.mode == WIFI_AP || (portalCfg.mode == WIFI_STA && portalCfg.SSID[0] == '\0')) setupAP();
-  else setupSTA();
+  // 5) Запускаем Wi-Fi в нужном режиме
+  if (portalCfg.mode == WIFI_STA && portalCfg.SSID[0] != '\0') {
+    setupSTA();                 // подключение к роутеру
+  } else {
+    setupAP();                  // точка доступа
+  }
+
+  DEBUG(F("My IP: "));
   DEBUGLN(myIP);
 
+  // === остальные менеджеры/инициализация ===
   EEcfg.begin(EEwifi.nextAddr(), 'a');
   EEeff.begin(EEcfg.nextAddr(), 'a');
   EEmm.begin(EEeff.nextAddr(), (uint8_t)LED_MAX);
@@ -235,7 +257,8 @@ void setup() {
   applySnowflakeState(cfg.snowflakes);
   cfg.turnOff = false;
   strip->setLeds(leds, cfg.ledAm);
-  udp.begin(8888);
+
+  udp.begin(8888);              // порт UDP для приложения
 }
 
 // ================== LOOP ==================
@@ -247,6 +270,8 @@ void loop() {
   EEeff.tick();
 
   parsing();  // парсим udp
+
+  protoTick(); 
 
   // таймер принудительного показа эффектов
   if (forceTmr.ready()) {
@@ -271,4 +296,117 @@ void loop() {
   handleParisMoments();
 
   if (!calibF && cfg.power) effects();
+}
+
+
+void udpService() {
+  static char buf[64];
+  int len = udp.parsePacket();
+  if (len > 0) {
+    len = udp.read(buf, min(len, (int)sizeof(buf)));
+    // Ответ приложению на его порт
+    udp.beginPacket(udp.remoteIP(), udp.remotePort());
+    udp.write("GT");                 // короткий «я тут»
+    // можно добавить полезное: версия/LED_MAX/текущий IP
+    // udp.printf("GT,%u,%u,%u.%u.%u.%u", LED_MAX, cfg.ledAm, myIP[0], myIP[1], myIP[2], myIP[3]);
+    udp.endPacket();
+  }
+}
+
+IPAddress calcBroadcast(IPAddress ip, IPAddress mask) {
+  uint32_t ip32 = (uint32_t)ip;
+  uint32_t m32  = (uint32_t)mask;
+  return IPAddress( (ip32 & m32) | (~m32) );
+}
+
+// Раз в секунду отправляем «маяк» по broadcast на 8888
+void udpAnnounceTick() {
+  static uint32_t tmr = 0;
+  if (millis() - tmr < 1000) return;
+  tmr = millis();
+
+  IPAddress bcast = calcBroadcast(WiFi.localIP(), WiFi.subnetMask()); // для Fritz: 192.168.178.255
+  udp.beginPacket(bcast, 8888);
+  udp.write("GYVERTWINK");   // произвольная метка
+  udp.endPacket();
+}
+
+static uint8_t rx[64];
+
+void sendCfgPacket() {
+  // формат, который ждёт приложение в case 1:
+  // [ 'G','T', 1, ledAm/100, ledAm%100, power, bright, auto, rnd, prd, offT, offSec, paris, snow ]
+  uint16_t am = cfg.ledAm;
+  uint8_t pkt[14] = {
+    'G','T', 1,
+    (uint8_t)(am/100), (uint8_t)(am%100),
+    (uint8_t)cfg.power,
+    (uint8_t)cfg.bright,
+    (uint8_t)cfg.autoCh,
+    (uint8_t)cfg.rndCh,
+    (uint8_t)cfg.prdCh,
+    (uint8_t)cfg.turnOff,
+    (uint8_t)cfg.offTmr,
+    (uint8_t)cfg.parisMoments,
+    (uint8_t)cfg.snowflakes
+  };
+  udp.beginPacket(udp.remoteIP(), udp.remotePort());
+  udp.write(pkt, sizeof(pkt));
+  udp.endPacket();
+}
+
+void sendSearchReply() {
+  // формат, который ждёт приложение в case 0:
+  // [ 'G','T', 0, lastOctet ]
+  uint8_t last = WiFi.localIP()[3];
+  uint8_t pkt[4] = { 'G','T', 0, last };
+  udp.beginPacket(udp.remoteIP(), udp.remotePort());
+  udp.write(pkt, sizeof(pkt));
+  udp.endPacket();
+}
+
+void sendEffectState() {
+  // для вкладки эффектов (case 4 в приложении):
+  // [ 'G','T', 4, fav, scale, speed ]
+  uint8_t pkt[6] = { 'G','T', 4, (uint8_t)effs[curEff].fav,
+                              (uint8_t)effs[curEff].scale,
+                              (uint8_t)effs[curEff].speed };
+  udp.beginPacket(udp.remoteIP(), udp.remotePort());
+  udp.write(pkt, sizeof(pkt));
+  udp.endPacket();
+}
+
+void protoTick() {
+  int len = udp.parsePacket();
+  if (len <= 0) return;
+
+  len = udp.read(rx, min(len, (int)sizeof(rx)));
+  if (len < 3) return;
+  if (rx[0] != 'G' || rx[1] != 'T') return;
+
+  uint8_t cmd = rx[2];
+
+  switch (cmd) {
+    case 0:   // поиск
+      sendSearchReply();
+      break;
+
+    case 1:   // запрос конфигурации
+      sendCfgPacket();
+      break;
+
+    case 2:   // управление (в приложении sendData({2,...}))
+      // тут уже у тебя есть обработка (яркость, power, и т.д.)
+      // после применения настроек можно при желании вернуть актуальную конфигурацию:
+      // sendCfgPacket();
+      break;
+
+    case 3:   // калибровка — у тебя уже реализовано
+      break;
+
+    case 4:   // эффекты
+      // у тебя уже есть парсинг. Для обновления UI приложения можно вернуть состояние:
+      sendEffectState();
+      break;
+  }
 }

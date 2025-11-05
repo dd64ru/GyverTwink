@@ -45,17 +45,34 @@ void setupAP() {
 
 void setupSTA() {
   DEBUG("Connecting to AP... ");
-  WiFi.softAPdisconnect();
-  WiFi.disconnect();
+  WiFi.softAPdisconnect(true);
+  WiFi.disconnect(true);
   WiFi.mode(WIFI_STA);
+
+#if USE_STATIC_IP
+  if (WiFi.config(STATIC_IP, STATIC_GW, STATIC_SN, STATIC_DNS)) {
+    DEBUG("Static IP set: "); DEBUGLN(STATIC_IP);
+  } else {
+    DEBUGLN("Static IP set FAILED, fallback to DHCP");
+  }
+#else
+  // Явно включаем DHCP (на всякий случай)
+  WiFi.config(0U, 0U, 0U);
+#endif
+
   WiFi.begin(portalCfg.SSID, portalCfg.pass);
+
   uint32_t tmr = millis();
-  bool state = false;
   while (millis() - tmr < 15000) {
     if (WiFi.status() == WL_CONNECTED) {
       fadeBlink(CRGB::Green);
       DEBUGLN("ok");
       myIP = WiFi.localIP();
+      WiFiUDP kick;
+      kick.begin(0);
+      kick.beginPacket(STATIC_GW, 9); // любой порт
+      kick.write(0);
+      kick.endPacket();
       return;
     }
     fader(CRGB::Yellow);

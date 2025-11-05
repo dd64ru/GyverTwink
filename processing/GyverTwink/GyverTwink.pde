@@ -24,11 +24,11 @@
 
 // ============== НАСТРОЙКИ ===============
 // true - Android режим, false - PC режим
-private static final boolean androidMode = false;
+private static final boolean androidMode = true;
 
 // для PC режима раскомментируй две строки ниже. Для Android - закомментируй
-void openKeyboard() {}
-void closeKeyboard() {}
+//void openKeyboard() {}
+//void closeKeyboard() {}
 
 // чтобы сбилдить под Android - нужно установить Android mode
 // встроенный билдер собирает под SDK версии 29
@@ -96,7 +96,16 @@ void setup() {
 
   udp = new UDP(this);
   udp.listen(true);
-  startSearch();
+  quickConnect("192.168.178.88");
+}
+
+void quickConnect(String ip) {
+  ips.clear();
+  ips.append(ip);
+  dropIP.selected = 0;
+  curIP = ip;
+  found = true;
+  requestCfg();  // сразу тянем конфиг (case 1)
 }
 
 void draw() {

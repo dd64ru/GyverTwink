@@ -815,46 +815,50 @@ public class Slider {
   public float value = 0;
   public int tmr = 0;
   public boolean flag = false;
+  public boolean editing = false;
 
   public boolean show(float min, float max, int x, int y, int w, int h) {
     _prevX = x + w;
-    boolean chFlag = false;
+    boolean changedNow = false;
+  
+    // трек
     noStroke();
     fill(c_light);
-    rect(x, y+h/2, w, 4, 2);
+    rect(x, y + h/2, w, 4, 2);
+  
     value = constrain(value, min, max);
     float pos = map(value, min, max, 0, w);
-    //pos = constrain(pos, min, max);
+  
+    // заполненная часть
     fill(c_hover);
-    rect(x, y+h/2, pos, 4, 2);
-
-    //Hover
-    if (mouseX >= x && mouseX <= x+w && mouseY >= y && mouseY <= y+h && !_drop_open) {
+    rect(x, y + h/2, pos, 4, 2);
+  
+    boolean over = (mouseX >= x && mouseX <= x+w && mouseY >= y && mouseY <= y+h && !_drop_open);
+  
+    // старт/ведение редактирования
+    if (mousePressed && ((over && (canClick || editing)) || editing)) {
+      editing = true;
+  
+      float mx = constrain(mouseX, x, x + w);
+      pos = mx - x;
+      value = map(mx, x, x + w, min, max);
+  
+      _item_changed = true;
+      changedNow = true;
+  
+      fill(red(c_hover), green(c_hover), blue(c_hover), 100);
+      ellipse(mx, y + h/2, h, h);
       fill(c_hover);
-      if (mousePressed && canClick) {
-        pos = mouseX;
-        _item_changed = true;
-        chFlag = true;
-        flag = true;
-        value = map(pos, x, x+w, min, max);        
-        fill(red(c_hover), green(c_hover), blue(c_hover), 100);
-        ellipse(pos, y+h/2, h, h); 
-        fill(c_hover);
-        ellipse(pos, y+h/2, h-s_stroke, h-s_stroke);
-      } else {
-        fill(red(c_hover), green(c_hover), blue(c_hover), 50);
-        ellipse(pos+x, y+h/2, h, h); 
-        fill(c_hover);
-        ellipse(pos+x, y+h/2, h-s_stroke, h-s_stroke);
-      }
-    } 
-    //Normal
-    else {
+      ellipse(mx, y + h/2, h - s_stroke, h - s_stroke);
+    } else {
+      if (!mousePressed) editing = false;  // отпустили — выходим из режима
       noStroke();
       fill(c_hover);
-      ellipse(pos+x, y+h/2, h-s_stroke, h-s_stroke);
+      ellipse(x + pos, y + h/2, h - s_stroke, h - s_stroke);
     }
-    if ((chFlag && millis() - tmr > 50) || (!chFlag && flag)) {
+  
+    // дебаунс события
+    if ((changedNow && millis() - tmr > 50) || (!changedNow && flag)) {
       tmr = millis();
       flag = false;
       return true;
@@ -947,7 +951,7 @@ void keyHandler() {
 // ====================================== DROPDOWN =======================================
 public class DropDown {
   private int selected = 0;
-  private boolean open = false;
+  private boolean opened = false;
 
   public DropDown() {
   }
@@ -957,9 +961,9 @@ public class DropDown {
     int h = s_height;
     w -= h;
     _drop_open = false;
-    if (Button(args[selected], x, y, w, h) || Button("", x+w, y, h, h)) open = !open;
+    if (Button(args[selected], x, y, w, h) || Button("", x+w, y, h, h)) opened = !opened;
     noStroke();
-    if (!open) {
+    if (!opened) {
       triangle(x+w+h/4+1, y+0.28*h+1, x+w+h*3/4+1, y+0.28*h+1, x+w+h/2+1, y+0.71*h+1);
       stroke(c_very_dark);
     } else {
@@ -970,13 +974,13 @@ public class DropDown {
       for (int i=0; i<args.length; i++) {
         if (Button(args[i], x, y + h + h*i, w+h, h)) {
           _drop_open = false;
-          open = false;
+          opened = false;
           selected = i;
           canClick = false;
           return true;
         }
       }
-      _drop_open = open;
+      _drop_open = opened;
     }
     return false;
   }

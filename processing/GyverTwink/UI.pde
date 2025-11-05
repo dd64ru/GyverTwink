@@ -68,18 +68,18 @@ void cfgTab() {
   if (found) {
     Divider(width-offs*2);
     Label("LED amount:", 15);
-    Label("Power:", 15);
-    Label("Brightness:", 15);
+    Label("Вкл/выкл:", 15);
+    Label("Яркость:", 15);
     Divider(width-offs*2);
-    Label("Off timer:", 15);
-    Label("Turn off in [1-240m]:", 15);
+    Label("Таймер выключения:", 15);
+    Label("Выключить через [1-240м]:", 15);
     Divider(width-offs*2);
-    Label("Switch effect:", 15);
-    Label("Auto:", 15);
-    Label("Random:", 15);
-    Label("Period [1-10m]:", 15);
-    Label("Paris lights moments:", 15);
-    Label("Snowflakes overlay:", 15);
+    Label("Переключить эффект:", 15);
+    Label("Авто:", 15);
+    Label("Случайно:", 15);
+    Label("Период смены [1-10м]:", 15);
+    Label("Режим Парижских огней:", 15);
+    Label("Режим снежинок:", 15);
   }
 
   uiResetStep(20);
@@ -102,23 +102,15 @@ void cfgTab() {
     if (offT.show(WW, uiStep())) sendData(new int[] {2, 7, int(offT.value)});
     if (offS.show(0, 250, WW, uiStep(), W)) sendData(new int[] {2, 8, int(offS.value)});
     uiStep();
-    if (Button("Next effect", WW, uiStep(), W)) sendData(new int[] {2, 6});
+    if (Button("Следующий эффект", WW, uiStep(), W)) sendData(new int[] {2, 6});
     if (auto.show(WW, uiStep())) sendData(new int[] {2, 3, int(auto.value)});
     if (rnd.show(WW, uiStep())) sendData(new int[] {2, 4, int(rnd.value)});
     if (prd.show(1, 10, WW, uiStep(), W)) sendData(new int[] {2, 5, int(prd.value)});
     if (parisMoments.show(WW, uiStep())) {
       sendData(new int[] {2, 9, int(parisMoments.value)});
-      if (parisMoments.value && snowflakes.value) {
-        snowflakes.value = false;
-        sendData(new int[] {2, 10, 0});
-      }
     }
     if (snowflakes.show(WW, uiStep())) {
       sendData(new int[] {2, 10, int(snowflakes.value)});
-      if (snowflakes.value && parisMoments.value) {
-        parisMoments.value = false;
-        sendData(new int[] {2, 9, 0});
-      }
     }
   }
 
@@ -143,16 +135,24 @@ void effTab() {
   uiResetStep(50);
   uiGlobalX(offs);
   if (found) {
-    Label("Effect:", 15);
-    Label("Favorite:", 15);
-    Label("Scale:", 15);
-    Label("Speed:", 15);
+    Label("Эффект:", 15);
+    Label("Избранное:", 15);
+    Label("Масштаб:", 15);
+    Label("Скорость и направление:", 15);
 
     uiResetStep(60);
     uiStep();
     if (fav.show(WW, uiStep())) sendData(new int[] {4, 1, int(fav.value)});
-    if (scl.show(0, 255, WW, uiStep(), W)) sendData(new int[] {4, 2, int(scl.value)});
-    if (spd.show(0, 255, WW, uiStep(), W)) sendData(new int[] {4, 3, int(spd.value)});
+    uiStep();
+    if (scl.show(0, 255, WW, uiStep(), W, int(s_height * 1.3))) {
+      sendData(new int[] {4, 2, int(scl.value)});
+    }
+    uiStep();  // дополнительный зазор между слайдерами
+    
+    // SPEED — такой же увеличенный хитбокс
+    if (spd.show(0, 255, WW, uiStep(), W, int(s_height * 1.3))) {
+      sendData(new int[] {4, 3, int(spd.value)});
+    }
 
     uiResetStep(50);
 
@@ -164,7 +164,7 @@ void effTab() {
     }
     if (androidMode) uiSetScale(androidScale);
     else uiSetScale(pcScale);
-  } else Label("No devices detected!", 15);
+  } else Label("Нет устройства!", 15);
 }
 
 void calibTab() { 
@@ -194,7 +194,7 @@ void calibTab() {
     uiResetX(0);
     uiGlobalX(0);
 
-    if (Button("Start")) {
+    if (Button("Старт")) {
       calibF = true;
       sendData(new int[] {3, 0});
       calibCount = 0;
@@ -202,7 +202,7 @@ void calibTab() {
     }
 
     Label(str(calibCount*100/(int(leds.text)+1))+'%', 15, uiPrevX()+15, uiPrevStep());
-    if (Button("Stop")) {
+    if (Button("Стоп")) {
       calibF = false;
       sendData(new int[] {3, 2});
       calibCount = 0;
@@ -211,7 +211,7 @@ void calibTab() {
     uiGlobalX(offs);
     uiResetStep(50);
     uiGlobalX(offs);
-    Label("No devices detected!", 15);
+    Label("Нет устройства!", 15);
   }
 }
 
